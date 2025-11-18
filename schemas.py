@@ -51,6 +51,11 @@ class Casino(BaseModel):
     features: List[str] = Field(default_factory=list)
     supported_countries: List[str] = Field(default_factory=list)
     base_score: Optional[float] = Field(4.0, ge=0, le=5, description="Editorial base score (0-5)")
+    # New descriptive fields
+    pros: List[str] = Field(default_factory=list, description="Pros list shown on details page")
+    cons: List[str] = Field(default_factory=list, description="Cons list shown on details page")
+    payment_methods: List[str] = Field(default_factory=list, description="Supported payment methods (e.g., Visa, PayPal)")
+    providers: List[str] = Field(default_factory=list, description="Game providers (e.g., NetEnt, Pragmatic Play)")
 
 class Offer(BaseModel):
     """Specific promotions for a casino"""

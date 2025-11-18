@@ -1,8 +1,8 @@
 import os
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from database import create_document, get_documents, db
 from schemas import Casino, Offer, Review, Click
 
@@ -15,6 +15,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+ADMIN_SECRET = os.getenv("ADMIN_SECRET")
 
 @app.get("/")
 def read_root():
@@ -46,16 +48,60 @@ def test_database():
 # ----------------------
 
 @app.get("/api/casinos")
-async def list_casinos(country: Optional[str] = None):
-    """List casinos, optionally filter by supported country code"""
-    filter_q = {}
+async def list_casinos(
+    country: Optional[str] = None,
+    q: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 10,
+    sort: Optional[str] = None,
+):
+    """List casinos with optional filters and pagination
+    - country: filter by supported country code (case-insensitive)
+    - q: search by name (case-insensitive contains)
+    - page, page_size: pagination controls
+    - sort: one of [score_desc, score_asc, name_asc, name_desc]
+    """
+    if page < 1:
+        page = 1
+    if page_size < 1 or page_size > 50:
+        page_size = 10
+
+    filter_q: Dict[str, Any] = {}
     if country:
-        filter_q = {"supported_countries": {"$in": [country.upper()]}}
-    docs = get_documents("casino", filter_q)
-    # Normalize Mongo ObjectId for frontend consumption
+        filter_q["supported_countries"] = {"$in": [country.upper()]}
+    if q:
+        filter_q["name"] = {"$regex": q, "$options": "i"}
+
+    # Sorting
+    sort_spec = None
+    if sort == "score_desc":
+        sort_spec = ("base_score", -1)
+    elif sort == "score_asc":
+        sort_spec = ("base_score", 1)
+    elif sort == "name_desc":
+        sort_spec = ("name", -1)
+    else:  # default name asc
+        sort_spec = ("name", 1)
+
+    # Query with pagination
+    col = db["casino"]
+    total = col.count_documents(filter_q)
+    cursor = col.find(filter_q).sort([sort_spec]).skip((page - 1) * page_size).limit(page_size)
+    docs = list(cursor)
+
+    # Normalize
     for d in docs:
         d["id"] = str(d.pop("_id", ""))
-    return {"items": docs}
+
+    return {
+        "items": docs,
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "pages": (total + page_size - 1) // page_size,
+        },
+    }
 
 @app.get("/api/casinos/{slug}")
 async def get_casino(slug: str):
@@ -71,7 +117,31 @@ async def get_casino(slug: str):
     reviews = get_documents("review", {"casino_slug": slug})
     for r in reviews:
         r["id"] = str(r.pop("_id", ""))
-    return {"casino": d, "offers": offers, "reviews": reviews}
+
+    # ratings breakdown
+    breakdown = {str(i): 0 for i in range(1, 6)}
+    for r in reviews:
+        try:
+            breakdown[str(int(r.get("rating", 0)))] += 1
+        except Exception:
+            pass
+    total_reviews = sum(breakdown.values())
+    avg_rating = (
+        round(
+            sum(int(k) * v for k, v in breakdown.items()) / total_reviews, 2
+        ) if total_reviews else None
+    )
+
+    return {
+        "casino": d,
+        "offers": offers,
+        "reviews": reviews,
+        "ratings": {
+            "breakdown": breakdown,
+            "total": total_reviews,
+            "average": avg_rating,
+        },
+    }
 
 class NewReview(BaseModel):
     casino_slug: str
@@ -95,7 +165,10 @@ class NewOffer(BaseModel):
     code: Optional[str] = None
 
 @app.post("/api/offers")
-async def create_offer(payload: NewOffer):
+async def create_offer(payload: NewOffer, x_admin_secret: Optional[str] = Header(default=None)):
+    # simple admin guard
+    if ADMIN_SECRET and x_admin_secret != ADMIN_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
     # ensure casino exists
     casino_docs = get_documents("casino", {"slug": payload.casino_slug})
     if not casino_docs:
@@ -112,7 +185,7 @@ async def track_click(payload: Click, request: Request):
     inserted_id = create_document("click", data)
     return {"id": inserted_id, "status": "ok"}
 
-# Seed endpoint (optional helper)
+# Seed / create casino (admin)
 class SeedCasino(BaseModel):
     name: str
     slug: str
@@ -122,9 +195,16 @@ class SeedCasino(BaseModel):
     features: Optional[List[str]] = []
     supported_countries: Optional[List[str]] = []
     base_score: Optional[float] = 4.0
+    # Optional extended meta
+    pros: Optional[List[str]] = []
+    cons: Optional[List[str]] = []
+    payment_methods: Optional[List[str]] = []
+    providers: Optional[List[str]] = []
 
 @app.post("/api/seed/casino")
-async def seed_casino(payload: SeedCasino):
+async def seed_casino(payload: SeedCasino, x_admin_secret: Optional[str] = Header(default=None)):
+    if ADMIN_SECRET and x_admin_secret != ADMIN_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
     casino = Casino(**payload.model_dump())
     inserted_id = create_document("casino", casino)
     return {"id": inserted_id}
