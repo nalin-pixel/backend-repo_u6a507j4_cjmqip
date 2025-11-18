@@ -12,9 +12,10 @@ Model name is converted to lowercase for the collection name:
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Literal
+from datetime import datetime
 
-# Example schemas (you can keep using them if needed)
+# Example schemas (kept for reference/demo)
 
 class User(BaseModel):
     """
@@ -56,6 +57,10 @@ class Casino(BaseModel):
     cons: List[str] = Field(default_factory=list, description="Cons list shown on details page")
     payment_methods: List[str] = Field(default_factory=list, description="Supported payment methods (e.g., Visa, PayPal)")
     providers: List[str] = Field(default_factory=list, description="Game providers (e.g., NetEnt, Pragmatic Play)")
+    gallery: List[str] = Field(default_factory=list, description="Optional gallery of image URLs")
+    seo_title: Optional[str] = None
+    seo_description: Optional[str] = None
+    is_published: bool = Field(default=True)
 
 class Offer(BaseModel):
     """Specific promotions for a casino"""
@@ -72,6 +77,8 @@ class Review(BaseModel):
     user_name: str
     rating: int = Field(..., ge=1, le=5)
     comment: Optional[str] = None
+    status: Literal["pending", "approved", "rejected"] = Field("approved")
+    moderation_notes: Optional[str] = None
 
 class Click(BaseModel):
     """Outbound click tracking"""
@@ -80,8 +87,32 @@ class Click(BaseModel):
     user_agent: Optional[str] = None
     ip: Optional[str] = None
 
-# Note: The Flames database viewer will automatically:
-# 1. Read these schemas from GET /schema endpoint
-# 2. Use them for document validation when creating/editing
-# 3. Handle all database operations (CRUD) directly
-# 4. You don't need to create any database endpoints!
+# Auth / Admin
+class AdminUser(BaseModel):
+    email: str
+    password_hash: str
+    role: Literal["admin", "editor", "reviewer"] = "admin"
+    is_active: bool = True
+
+# Blog
+class BlogPost(BaseModel):
+    title: str
+    slug: str
+    cover_image: Optional[str] = None
+    content: str = Field(..., description="Markdown or HTML content")
+    tags: List[str] = Field(default_factory=list)
+    status: Literal["draft", "published"] = "draft"
+    author_email: Optional[str] = None
+    published_at: Optional[datetime] = None
+    seo_title: Optional[str] = None
+    seo_description: Optional[str] = None
+
+# Media metadata (when using GridFS or external storage)
+class Media(BaseModel):
+    filename: str
+    content_type: Optional[str] = None
+    size: Optional[int] = None
+    storage: Literal["gridfs", "external"] = "gridfs"
+    url: Optional[str] = Field(None, description="Public URL if using external storage; otherwise /media/{id}")
+    alt: Optional[str] = None
+    caption: Optional[str] = None
