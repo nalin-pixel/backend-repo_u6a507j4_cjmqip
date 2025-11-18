@@ -2,9 +2,9 @@ import os
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any, Literal
 
-from fastapi import FastAPI, Request, HTTPException, Header, Depends, UploadFile, File, Form
+from fastapi import FastAPI, Request, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
@@ -29,12 +29,12 @@ app.add_middleware(
 # ----------------------------------------------------------------------------
 # Config & Security
 # ----------------------------------------------------------------------------
-ADMIN_SECRET = os.getenv("ADMIN_SECRET")
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change")
 JWT_ALG = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE", "60"))
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Keep OAuth2 scheme for compatibility with clients that send a Bearer token
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 # ----------------------------------------------------------------------------
@@ -124,49 +124,63 @@ async def test_database():
 
 
 # ----------------------------------------------------------------------------
-# Auth Endpoints (Admin)
+# Auth Endpoints (Simple email + password)
 # ----------------------------------------------------------------------------
 
-@app.post("/api/auth/login", response_model=TokenResponse)
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    users = list(collection("adminuser").find({"email": form_data.username}))
-    if not users:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    user = users[0]
-    if not verify_password(form_data.password, user.get("password_hash", "")):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = create_access_token({"sub": user["email"], "role": user.get("role", "admin")})
-    return TokenResponse(access_token=token)
+class RegisterPayload(BaseModel):
+    email: str
+    password: str
 
 
-@app.post("/api/auth/seed-admin")
-async def seed_admin(email: str = Form(...), password: str = Form(...)):
-    # No secret key required. Allow seeding only if no admin exists or the same email is being (re)seeded.
-    existing_admins = list(collection("adminuser").find({}))
+@app.post("/api/auth/register")
+async def register(payload: RegisterPayload):
     col = collection("adminuser")
-    existing_same = col.find_one({"email": email})
-
-    # If an admin already exists and it's not this email, disable further seeding for safety.
-    if existing_admins and not existing_same:
-        raise HTTPException(status_code=403, detail="Seeding disabled after initial admin is created")
-
-    # If same email exists, allow password reset/update to align with requirements
-    if existing_same:
-        col.update_one({"_id": existing_same["_id"]}, {"$set": {
-            "password_hash": get_password_hash(password),
-            "updated_at": datetime.utcnow(),
-        }})
-        return {"status": "updated"}
-
+    if col.find_one({"email": payload.email}):
+        raise HTTPException(status_code=400, detail="Email already registered")
     doc = {
-        "email": email,
-        "password_hash": get_password_hash(password),
+        "email": payload.email,
+        "password_hash": get_password_hash(payload.password),
         "role": "admin",
         "is_active": True,
         "created_at": datetime.utcnow(),
     }
     res = col.insert_one(doc)
-    return {"id": str(res.inserted_id), "status": "created"}
+    return {"id": str(res.inserted_id), "email": payload.email}
+
+
+@app.post("/api/auth/login", response_model=TokenResponse)
+async def login(request: Request):
+    # Accept either JSON {email, password} or form data with fields "email"/"password" or OAuth2-style "username"/"password"
+    email: Optional[str] = None
+    password: Optional[str] = None
+
+    content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
+    if content_type == "application/json":
+        data = await request.json()
+        email = (data or {}).get("email")
+        password = (data or {}).get("password")
+    elif content_type in ("application/x-www-form-urlencoded", "multipart/form-data"):
+        form = await request.form()
+        email = form.get("email") or form.get("username")
+        password = form.get("password")
+    else:
+        # Try to parse as form by default
+        try:
+            form = await request.form()
+            email = form.get("email") or form.get("username")
+            password = form.get("password")
+        except Exception:
+            pass
+
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email and password are required")
+
+    user = collection("adminuser").find_one({"email": email})
+    if not user or not verify_password(password, user.get("password_hash", "")):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    token = create_access_token({"sub": user["email"], "role": user.get("role", "admin")})
+    return TokenResponse(access_token=token)
 
 
 # ----------------------------------------------------------------------------
@@ -301,7 +315,7 @@ class NewOffer(BaseModel):
 
 @app.post("/api/offers")
 async def create_offer(payload: NewOffer, user=Depends(require_roles("admin", "editor"))):
-    # Now strictly role-based auth (no legacy secret header)
+    # Now strictly role-based auth
     casino_docs = get_documents("casino", {"slug": payload.casino_slug})
     if not casino_docs:
         raise HTTPException(status_code=400, detail="Casino does not exist")
@@ -453,8 +467,6 @@ async def get_blog(slug: str):
 
 @app.post("/api/admin/media", dependencies=[Depends(require_roles("admin", "editor"))])
 async def upload_media(file: UploadFile = File(...)):
-    # For simplicity, store in GridFS-like collection as base64 or save to /tmp and return a fake URL.
-    # In a real deployment, we would use S3 and presigned URLs. Here, we store metadata only and expect external URL to be managed elsewhere.
     content = await file.read()
     size = len(content)
     doc = {
@@ -462,36 +474,10 @@ async def upload_media(file: UploadFile = File(...)):
         "content_type": file.content_type,
         "size": size,
         "storage": "gridfs",
-        # Not storing content to keep the environment light; in real app, use GridFS.
         "created_at": datetime.utcnow(),
     }
     res = collection("media").insert_one(doc)
     return {"id": str(res.inserted_id), "filename": file.filename, "size": size}
-
-
-# ----------------------------------------------------------------------------
-# Legacy seed endpoints (kept for compatibility)
-# ----------------------------------------------------------------------------
-class SeedCasino(BaseModel):
-    name: str
-    slug: str
-    affiliate_url: str
-    logo_url: Optional[str] = None
-    bonus_text: Optional[str] = None
-    features: Optional[List[str]] = []
-    supported_countries: Optional[List[str]] = []
-    base_score: Optional[float] = 4.0
-    pros: Optional[List[str]] = []
-    cons: Optional[List[str]] = []
-    payment_methods: Optional[List[str]] = []
-    providers: Optional[List[str]] = []
-
-
-@app.post("/api/seed/casino", dependencies=[Depends(require_roles("admin", "editor"))])
-async def seed_casino(payload: SeedCasino):
-    casino = Casino(**payload.model_dump())
-    inserted_id = create_document("casino", casino)
-    return {"id": inserted_id}
 
 
 if __name__ == "__main__":
