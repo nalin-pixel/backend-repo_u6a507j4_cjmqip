@@ -1,11 +1,16 @@
 INFO:     Will watch for changes in these directories: ['/home/workspace']
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [335] using StatReload
-INFO:     Started server process [337]
+INFO:     Started reloader process [431] using StatReload
+INFO:     Started server process [433]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
-INFO:     172.20.0.1:54584 - "HEAD / HTTP/1.1" 405 Method Not Allowed
-INFO:     172.20.0.1:54596 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK
-INFO:     172.20.0.1:54596 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK
-INFO:     172.20.0.1:54602 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK
-INFO:     172.20.0.1:54602 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK
+INFO:     172.20.0.1:52796 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK
+INFO:     172.20.0.1:52796 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK
+INFO:     172.20.0.1:52810 - "HEAD / HTTP/1.1" 405 Method Not Allowed
+INFO:     172.20.0.1:52806 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK
+INFO:     172.20.0.1:52806 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK
+INFO:     172.20.0.1:45076 - "OPTIONS /api/seed/casino HTTP/1.1" 200 OK
+INFO:     172.20.0.1:45076 - "POST /api/seed/casino HTTP/1.1" 401 Unauthorized
+INFO:     172.20.0.1:45076 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK
+INFO:     172.20.0.1:45076 - "POST /api/seed/casino HTTP/1.1" 401 Unauthorized
+INFO:     172.20.0.1:45076 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK

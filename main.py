@@ -143,11 +143,21 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 async def seed_admin(email: str = Form(...), password: str = Form(...)):
     # No secret key required. Allow seeding only if no admin exists or the same email is being (re)seeded.
     existing_admins = list(collection("adminuser").find({}))
+    col = collection("adminuser")
+    existing_same = col.find_one({"email": email})
+
     # If an admin already exists and it's not this email, disable further seeding for safety.
-    if existing_admins and not collection("adminuser").find_one({"email": email}):
+    if existing_admins and not existing_same:
         raise HTTPException(status_code=403, detail="Seeding disabled after initial admin is created")
-    if collection("adminuser").find_one({"email": email}):
-        return {"status": "exists"}
+
+    # If same email exists, allow password reset/update to align with requirements
+    if existing_same:
+        col.update_one({"_id": existing_same["_id"]}, {"$set": {
+            "password_hash": get_password_hash(password),
+            "updated_at": datetime.utcnow(),
+        }})
+        return {"status": "updated"}
+
     doc = {
         "email": email,
         "password_hash": get_password_hash(password),
@@ -155,7 +165,7 @@ async def seed_admin(email: str = Form(...), password: str = Form(...)):
         "is_active": True,
         "created_at": datetime.utcnow(),
     }
-    res = collection("adminuser").insert_one(doc)
+    res = col.insert_one(doc)
     return {"id": str(res.inserted_id), "status": "created"}
 
 
