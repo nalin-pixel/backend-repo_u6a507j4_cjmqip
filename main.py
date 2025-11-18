@@ -140,10 +140,12 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
 
 @app.post("/api/auth/seed-admin")
-async def seed_admin(email: str = Form(...), password: str = Form(...), x_admin_secret: Optional[str] = Header(default=None)):
-    # simple guard to prevent open seeding in prod
-    if ADMIN_SECRET and x_admin_secret != ADMIN_SECRET:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+async def seed_admin(email: str = Form(...), password: str = Form(...)):
+    # No secret key required. Allow seeding only if no admin exists or the same email is being (re)seeded.
+    existing_admins = list(collection("adminuser").find({}))
+    # If an admin already exists and it's not this email, disable further seeding for safety.
+    if existing_admins and not collection("adminuser").find_one({"email": email}):
+        raise HTTPException(status_code=403, detail="Seeding disabled after initial admin is created")
     if collection("adminuser").find_one({"email": email}):
         return {"status": "exists"}
     doc = {
@@ -288,10 +290,8 @@ class NewOffer(BaseModel):
 
 
 @app.post("/api/offers")
-async def create_offer(payload: NewOffer, x_admin_secret: Optional[str] = Header(default=None), user=Depends(require_roles("admin", "editor"))):
-    # allow either role-based auth (preferred) or legacy secret header if configured
-    if ADMIN_SECRET and x_admin_secret != ADMIN_SECRET and user is None:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+async def create_offer(payload: NewOffer, user=Depends(require_roles("admin", "editor"))):
+    # Now strictly role-based auth (no legacy secret header)
     casino_docs = get_documents("casino", {"slug": payload.casino_slug})
     if not casino_docs:
         raise HTTPException(status_code=400, detail="Casino does not exist")
@@ -477,10 +477,8 @@ class SeedCasino(BaseModel):
     providers: Optional[List[str]] = []
 
 
-@app.post("/api/seed/casino")
-async def seed_casino(payload: SeedCasino, x_admin_secret: Optional[str] = Header(default=None)):
-    if ADMIN_SECRET and x_admin_secret != ADMIN_SECRET:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+@app.post("/api/seed/casino", dependencies=[Depends(require_roles("admin", "editor"))])
+async def seed_casino(payload: SeedCasino):
     casino = Casino(**payload.model_dump())
     inserted_id = create_document("casino", casino)
     return {"id": inserted_id}
