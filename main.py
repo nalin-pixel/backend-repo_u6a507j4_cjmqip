@@ -86,6 +86,24 @@ async def submit_review(payload: NewReview):
     inserted_id = create_document("review", review)
     return {"id": inserted_id, "message": "Review submitted"}
 
+class NewOffer(BaseModel):
+    casino_slug: str
+    title: str
+    description: Optional[str] = None
+    bonus_amount: Optional[str] = None
+    wagering: Optional[str] = None
+    code: Optional[str] = None
+
+@app.post("/api/offers")
+async def create_offer(payload: NewOffer):
+    # ensure casino exists
+    casino_docs = get_documents("casino", {"slug": payload.casino_slug})
+    if not casino_docs:
+        raise HTTPException(status_code=400, detail="Casino does not exist")
+    offer = Offer(**payload.model_dump())
+    inserted_id = create_document("offer", offer)
+    return {"id": inserted_id, "message": "Offer created"}
+
 @app.post("/api/click")
 async def track_click(payload: Click, request: Request):
     data = payload.model_dump()
