@@ -10,7 +10,7 @@ from passlib.context import CryptContext
 from pydantic import BaseModel
 from pymongo.collection import Collection
 
-from database import create_document, get_documents, db
+from database import create_document, get_documents, get_db
 from schemas import Casino, Offer, Review, Click, AdminUser, BlogPost, Media
 
 # ----------------------------------------------------------------------------
@@ -42,9 +42,10 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 # ----------------------------------------------------------------------------
 
 def collection(name: str) -> Collection:
-    if db is None:
+    database = get_db()
+    if database is None:
         raise HTTPException(status_code=503, detail="Database not initialized")
-    return db[name]
+    return database[name]
 
 
 def verify_password(plain_password: str, password_hash: str) -> bool:
@@ -105,13 +106,14 @@ async def read_root():
 @app.get("/test")
 async def test_database():
     try:
-        if db is None:
+        database = get_db()
+        if database is None:
             raise Exception("Database not initialized")
-        collections = db.list_collection_names()
+        collections = database.list_collection_names()
         return {
             "backend": "✅ Running",
             "database": "✅ Connected & Working",
-            "database_name": db.name,
+            "database_name": database.name,
             "collections": collections,
         }
     except Exception as e:
@@ -134,7 +136,11 @@ class RegisterPayload(BaseModel):
 
 @app.post("/api/auth/register")
 async def register(payload: RegisterPayload):
-    col = collection("adminuser")
+    database = get_db()
+    if database is None:
+        # Allow registration without DB by returning a clear error
+        raise HTTPException(status_code=503, detail="Database not initialized")
+    col = database["adminuser"]
     if col.find_one({"email": payload.email}):
         raise HTTPException(status_code=400, detail="Email already registered")
     doc = {
@@ -175,7 +181,11 @@ async def login(request: Request):
     if not email or not password:
         raise HTTPException(status_code=400, detail="Email and password are required")
 
-    user = collection("adminuser").find_one({"email": email})
+    database = get_db()
+    if database is None:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+
+    user = database["adminuser"].find_one({"email": email})
     if not user or not verify_password(password, user.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 

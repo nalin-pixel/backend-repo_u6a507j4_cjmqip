@@ -1,11 +1,15 @@
 INFO:     Will watch for changes in these directories: ['/home/workspace']
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [541] using StatReload
-INFO:     Started server process [543]
+INFO:     Started reloader process [612] using StatReload
+INFO:     Started server process [614]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
-INFO:     172.20.0.1:55570 - "HEAD / HTTP/1.1" 405 Method Not Allowed
-INFO:     172.20.0.1:55582 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK
-INFO:     172.20.0.1:55582 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK
-INFO:     172.20.0.1:55586 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK
-INFO:     172.20.0.1:55586 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK
+INFO:     172.20.0.1:38560 - "HEAD / HTTP/1.1" 405 Method Not Allowed
+INFO:     172.20.0.1:38572 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK
+INFO:     172.20.0.1:38572 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK
+INFO:     172.20.0.1:38580 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK
+INFO:     172.20.0.1:38580 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK
+INFO:     172.20.0.1:40402 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK
+INFO:     172.20.0.1:40402 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK
+INFO:     172.20.0.1:40402 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK
+INFO:     172.20.0.1:40408 - "GET /api/casinos?page=1&page_size=8&sort=name_asc HTTP/1.1" 200 OK
